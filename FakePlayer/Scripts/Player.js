@@ -17,11 +17,14 @@ class Player {
 
     constructor(account, server) {
         this.account = {
+            version: false,
             host: server.host,
             port: server.port,
             auth: account.auth,
             username: account.username,
             password: account.password,
+            logErrors: false,
+            hideErrors: true,
         };
 
         this.name = server.name;
@@ -46,10 +49,16 @@ class Player {
     create_connection() {
         logger.info(`[${this.name}] [Player] 正在连接到服务器 [${this.name}]……`);
         this.bot = mineflayer.createBot(this.account);
+
+        // 处理 Forge 服务器的握手
+        var forgeHandshake3 = require('minecraft-protocol-forge/src/client/forgeHandshake3');
+        forgeHandshake3(this.bot._client, {});
+
         this.listener.player = this.bot;
 
         this.bot.on('error', (error) => {
             logger.error(`[${this.name}] [Player] 遇到错误：${error}`);
+            this.connected = false;
             if (!this.already_connecting) {
                 this.already_connecting = true;
                 setTimeout(this.create_connection.bind(this), 10000);
@@ -99,10 +108,17 @@ class Player {
     async on_message(message) {
         const type = message.translate;
         if (!(type && message.with)) {
-            logger.info(`[${this.name}] [Player] 收无法解析的到服务器消息：${message}`);
+            // tellraw 等系统消息，过滤掉来自 QQ 同步的消息（避免回环）
+            const text = message.toString();
+            // 过滤 Forge 模组的 i18n 翻译键（如 info.eclipticseasons.xxx），这类消息无法被解析为可读文本
+            const isI18nKey = /^[\w]+(?:\.[\w]+){2,}$/.test(text.trim());
+            if (text && text.trim() && !text.startsWith('[QQ]') && !isI18nKey) {
+                logger.debug(`[${this.name}] [Player] 收到系统消息：${text}`);
+                await this.sender.send_synchronous_message(`[${this.name}] ${text}`);
+            }
             return;
         }
-        const player = message.with[0].text;
+        const player = message.with[0].toString();
         if (player == this.bot.username) return;
         if (type.startsWith('death'))
             await this.sender.send_player_death(player, type);
@@ -111,9 +127,9 @@ class Player {
         else if (type === 'multiplayer.player.joined')
             await this.sender.send_player_joined(player);
         else if (type === 'chat.type.text')
-            await this.sender.send_player_chat(player, message.with[1].text);
+            await this.sender.send_player_chat(player, message.with[1].toString());
         else if (type === 'commands.message.display.incoming') {
-            const message_text = message.with[1].text;
+            const message_text = message.with[1].toString();
             if (await this.sender.send_synchronous_message(`[${this.name}] <${player}> ${message_text}`))
                 this.send_message(player, [{text: '发送消息成功！', color: 'green'}]);
             else this.send_message(player, [{text: '发送消息失败！', color:'red'}]);
@@ -121,16 +137,19 @@ class Player {
     }
 
     execute_command (data, resolve) {
+        if (!this.connected) return resolve('机器人未连接到服务器！');
         this.bot.chat(data.startsWith('/') ? data : `/${data}`);
         resolve('目前不支持获取执行命令的返回值！');
     }
 
     execute_mcdr_command (data, resolve) {
+        if (!this.connected) return resolve('机器人未连接到服务器！');
         this.bot.chat(data.startsWith('!!') ? data : `!!${data}`);
         resolve('目前不支持获取执行命令的返回值！');
     }
 
     get_player_list(data, resolve) {
+        if (!this.connected) return resolve([]);
         let players = [];
         for (const player_name of Object.keys(this.bot.players))
             if (player_name != this.bot.username)
@@ -139,6 +158,7 @@ class Player {
     }
 
     send_message(player, message) {
+        if (!this.connected) return;
         if (this.account_config.permission) {
             this.bot.chat(`/tellraw ${player} ${JSON.stringify(message)}`);
             return;
@@ -149,6 +169,7 @@ class Player {
     }
 
     broadcast_message(data, resolve) {
+        if (!this.connected) return resolve(undefined);
         if (this.account_config.permission) {
             this.bot.chat(`/tellraw @a ${JSON.stringify(data)}`);
             return resolve(undefined);

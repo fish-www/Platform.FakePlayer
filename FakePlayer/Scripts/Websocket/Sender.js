@@ -63,8 +63,8 @@ class WebsocketSender {
             return Promise.resolve(false);
         }
         
-        if (!wait_response) return true;
         this.websocket.send(encode(message_data));
+        if (!wait_response) return true;
         const response_promise = new Promise((resolve) => {
             this.responses.push(resolve);
         });
