@@ -8,6 +8,8 @@ fork 并修改自 https://github.com/Minecraft-QQBot/Platform.FakePlayer
 
 克隆并进入项目目录中的 `FakePlayer` 目录下
 
+复制配置文件模板 `Config.json.example` 为 `Config.json`
+
 ### 创建共享网络
 
 当前编排使用外部共享网络 mc-bot，供其他 mc bot 相关容器共同接入
