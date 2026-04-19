@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "base-64": "^1.0.0",
+    "minecraft-protocol-forge": "github:PrismarineJS/node-minecraft-protocol-forge",
+    "mineflayer": "^4.37.0",
+    "utf8": "^3.0.0",
+    "ws": "^8.20.0"
+  }
+}

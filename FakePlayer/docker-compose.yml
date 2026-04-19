@@ -1,0 +1,17 @@
+services:
+    mc-fakeplayer:
+        image: mc-bot/fakeplayer:latest
+        build: .
+        container_name: mc-fakeplayer
+        restart: unless-stopped
+        networks:
+            - mcbot
+        volumes:
+            - ./Config.json:/app/Config.json
+            - ./Main.js:/app/Main.js
+            - ./Scripts:/app/Scripts
+
+networks:
+    mcbot:
+        name: mc-bot
+        external: true
