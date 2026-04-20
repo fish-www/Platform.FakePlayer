@@ -59,10 +59,7 @@ class Player {
         this.bot.on('error', (error) => {
             logger.error(`[${this.name}] [Player] 遇到错误：${error}`);
             this.connected = false;
-            if (!this.already_connecting) {
-                this.already_connecting = true;
-                setTimeout(this.create_connection.bind(this), 10000);
-            }
+            this.schedule_reconnect();
         });
         this.bot.on('death', () => {
             logger.warn(`[${this.name}] [Player] 假人死亡，正在重生……`);
@@ -70,12 +67,21 @@ class Player {
         });
 
         this.bot.on('kicked', this.on_kicked.bind(this));
+        this.bot.on('end', this.on_end.bind(this));
         this.bot.on('message', this.on_message.bind(this));
 
         this.bot.once('login', this.on_login.bind(this));
         this.bot.once('spawn', this.on_spawn.bind(this));
 
-        this.already_connecting = false;
+    }
+
+    schedule_reconnect() {
+        if (this.already_connecting) return;
+        this.already_connecting = true;
+        setTimeout(() => {
+            this.already_connecting = false;
+            this.create_connection();
+        }, 10000);
     }
 
     async on_spawn() {
@@ -90,19 +96,26 @@ class Player {
             setTimeout(execute_command.bind(this, (index + 1)), 1000);
         }
 
+        this.already_connecting = false;
         this.connected = true;
         logger.info(`[${this.name}] [Player] 已连接到服务器 [${this.name}]！`);
         setTimeout(execute_command.bind(this, 0), 2000);
     }
 
     async on_kicked(reason) {
+        const was_connected = this.connected;
         this.connected = false;
-        await this.sender.send_shutdown();
+        if (was_connected) await this.sender.send_shutdown();
         logger.warn(`[${this.name}] [Player] 被踢出服务器：${reason}`);
-        if (!this.already_connecting) {
-            this.already_connecting = true;
-            setTimeout(this.create_connection.bind(this), 10000);
-        }
+        this.schedule_reconnect();
+    }
+
+    async on_end(reason) {
+        const was_connected = this.connected;
+        this.connected = false;
+        if (was_connected) await this.sender.send_shutdown();
+        logger.warn(`[${this.name}] [Player] 与服务器连接断开：${reason}`);
+        this.schedule_reconnect();
     }
 
     async on_message(message) {
@@ -182,3 +195,4 @@ class Player {
 }
 
 module.exports = Player;
+
