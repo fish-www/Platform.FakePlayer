@@ -10,6 +10,7 @@ services:
             - ./Config.json:/app/Config.json
             - ./Main.js:/app/Main.js
             - ./Scripts:/app/Scripts
+            - ./data:/app/data
 
 networks:
     mcbot:

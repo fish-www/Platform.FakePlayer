@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer');
 
-const { logger } = require('./Utils');
+const { logger, I18nTranslator } = require('./Utils');
 const WebsocketSender = require('./Websocket/Sender');
 const WebsocketListener = require('./Websocket/Listener');
 
@@ -14,6 +14,11 @@ class Player {
 
     connected = false;
     already_connecting = false;
+    
+    // i18n 翻译器
+    i18n = null;
+    // 玩家名处理缓存：原始玩家名 -> 处理后的玩家名
+    player_name_cache = new Map();
 
     constructor(account, server) {
         this.account = {
@@ -35,6 +40,9 @@ class Player {
         this.listener.on('player_list', this.get_player_list.bind(this));
         this.listener.on('command', this.execute_command.bind(this));
         this.listener.on('mcdr_command', this.execute_mcdr_command.bind(this));
+
+        // 初始化 i18n 翻译器
+        this.i18n = new I18nTranslator();
 
         this.sender.connect();
         this.listener.connect();
@@ -118,20 +126,38 @@ class Player {
         this.schedule_reconnect();
     }
 
+    normalize_player_name(rawPlayerName) {
+        if (this.player_name_cache.has(rawPlayerName)) {
+            return this.player_name_cache.get(rawPlayerName);
+        }
+
+        const normalized = this.i18n.translate_all_keys(rawPlayerName);
+
+        // 控制缓存规模，避免长期运行时无界增长
+        if (this.player_name_cache.size >= 2048) {
+            this.player_name_cache.clear();
+        }
+
+        this.player_name_cache.set(rawPlayerName, normalized);
+        return normalized;
+    }
+
     async on_message(message) {
         const type = message.translate;
         if (!(type && message.with)) {
             // tellraw 等系统消息，过滤掉来自 QQ 同步的消息（避免回环）
             const text = message.toString();
-            // 过滤 Forge 模组的 i18n 翻译键（如 info.eclipticseasons.xxx），这类消息无法被解析为可读文本
-            const isI18nKey = /^[\w]+(?:\.[\w]+){2,}$/.test(text.trim());
-            if (text && text.trim() && !text.startsWith('[QQ]') && !isI18nKey) {
+            // 过滤 Forge 模组的 i18n 翻译键
+            if (text && text.trim() && !text.startsWith('[QQ]') && !this.i18n.is_i18n_key(text)) {
                 logger.debug(`[${this.name}] [Player] 收到系统消息：${text}`);
                 await this.sender.send_synchronous_message(`[${this.name}] ${text}`);
             }
             return;
         }
-        const player = message.with[0].toString();
+        const rawPlayerName = message.with[0].toString();
+        // 直接做 i18n 直译，并缓存玩家名处理结果
+        const player = this.normalize_player_name(rawPlayerName);
+
         if (player == this.bot.username) return;
         if (type.startsWith('death'))
             await this.sender.send_player_death(player, type);
